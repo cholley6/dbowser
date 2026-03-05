@@ -271,6 +271,22 @@ async def list_tables(
         return await _fetch_tables(connection, schema_name)
 
 
+async def list_columns(
+    connection_parameters: ConnectionParameters,
+    schema_name: str,
+    table_name: str,
+) -> list[str]:
+    query = """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = $2
+        ORDER BY ordinal_position
+    """
+    async with _acquire_connection(connection_parameters) as connection:
+        rows = await connection.fetch(query, schema_name, table_name)
+    return [row["column_name"] for row in rows]
+
+
 async def list_rows(
     connection_parameters: ConnectionParameters,
     schema_name: str,
