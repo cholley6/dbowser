@@ -14,7 +14,6 @@ from textual.coordinate import Coordinate
 from textual.events import Key
 from textual.widgets import (
     DataTable,
-    Header,
     Input,
     ListItem,
     ListView,
@@ -47,6 +46,7 @@ from dbowser.postgres_driver import (
     SchemaInfo,
     TableInfo,
     build_database_connection_parameters,
+    list_columns,
     close_pools,
     list_databases,
     list_rows,
@@ -801,9 +801,7 @@ class DatabaseBrowserApp(App):
     def _view_bar_text(self) -> str:
         filter_text = self._resource_filters.get(self._current_view, "")
         filter_suffix = (
-            f"  [bold rgb(255, 170, 90)]/ {filter_text}[/]"
-            if filter_text
-            else ""
+            f"  [bold rgb(255, 170, 90)]/ {filter_text}[/]" if filter_text else ""
         )
         if self._current_view == "connection":
             return f"Connections{filter_suffix}"
@@ -1199,6 +1197,8 @@ class DatabaseBrowserApp(App):
             return
         if await self._handle_page_size_command(command_text):
             return
+        if await self._handle_template_command(command_text):
+            return
         self._update_message(f"Unknown command: {command_text}")
 
     def _show_help_command(self) -> None:
@@ -1209,6 +1209,7 @@ class DatabaseBrowserApp(App):
             "table | tables",
             "rows | data",
             "query | sql",
+            "template",
             "pagesize <N>",
             "halp | help | ?",
             "q | quit | exit",
@@ -1278,6 +1279,53 @@ class DatabaseBrowserApp(App):
                     has_more=False,
                 )
                 self._populate_rows_table(self._query_page)
+        return True
+
+    async def _handle_template_command(self, command_text: str) -> bool:
+        normalized = command_text.strip().lower()
+        if normalized != "template":
+            return False
+        if not self._selected_database_name:
+            self._update_message("Select a database first.")
+            return True
+        if not self._selected_schema_name:
+            self._update_message("Select a schema first.")
+            return True
+        if not self._selected_table_name:
+            self._update_message("Select a table first.")
+            return True
+        selected_parameters = build_database_connection_parameters(
+            self._require_connection_parameters(),
+            self._selected_database_name,
+        )
+        try:
+            columns = await list_columns(
+                selected_parameters,
+                self._selected_schema_name,
+                self._selected_table_name,
+            )
+        except Exception as error:
+            self._update_message(f"Error fetching columns: {error}")
+            return True
+        if not columns:
+            self._update_message("No columns found for this table.")
+            return True
+        column_list = ",\n    ".join(columns)
+        order_by = "\nORDER BY created_at DESC" if "created_at" in columns else ""
+        template_query = (
+            f"SELECT\n    {column_list}\n"
+            f'FROM "{self._selected_schema_name}"."{self._selected_table_name}"'
+            f"{order_by}\n"
+            f"LIMIT 1000"
+        )
+        save_last_query(template_query)
+        self._query_text = template_query
+        self._query_page_offset = 0
+        await self._set_view("query")
+        self._query_text_view().update(
+            self._format_text_with_line_numbers(self._query_text)
+        )
+        self._update_message("Template query created.")
         return True
 
     async def _refresh_view(self) -> None:
