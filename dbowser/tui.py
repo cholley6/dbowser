@@ -1311,10 +1311,11 @@ class DatabaseBrowserApp(App):
             self._update_message("No columns found for this table.")
             return True
         column_list = ",\n    ".join(columns)
+        order_by = "\nORDER BY created_at DESC" if "created_at" in columns else ""
         template_query = (
             f"SELECT\n    {column_list}\n"
-            f"FROM {self._selected_schema_name}.{self._selected_table_name}\n"
-            f"ORDER BY created_at DESC\n"
+            f'FROM "{self._selected_schema_name}"."{self._selected_table_name}"'
+            f"{order_by}\n"
             f"LIMIT 1000"
         )
         save_last_query(template_query)
