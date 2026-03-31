@@ -37,6 +37,7 @@ from dbowser.ui_screens import (
     CellDetailScreen,
     ErrorDialog,
     KeyBindingBar,
+    RowDetailScreen,
 )
 
 from dbowser.postgres_driver import (
@@ -266,6 +267,7 @@ class DatabaseBrowserApp(App):
         ("o", "enter_order_mode", "Order"),
         ("v", "toggle_block_selection", "Block Select"),
         ("V", "toggle_row_selection", "Row Select"),
+        ("R", "view_row_as_columns", "View Row"),
         ("/", "enter_filter_mode", "Filter"),
         (":", "enter_command_mode", "Command"),
         ("escape", "escape", "Back"),
@@ -413,6 +415,11 @@ class DatabaseBrowserApp(App):
 
     def action_enter_palette_mode(self) -> None:
         self._enter_input_mode("palette")
+
+    def action_view_row_as_columns(self) -> None:
+        if self._input_mode or self._current_view not in {"rows", "query"}:
+            return
+        self._show_row_detail()
 
     def action_add_connection(self) -> None:
         if self._current_view != "connection":
@@ -1514,6 +1521,7 @@ class DatabaseBrowserApp(App):
         rows_table = self._rows_table_view()
         rows_table.show_row_labels = True
         rows_table.clear(columns=True)
+        self._rows_column_widths = []
         if not row_page.columns:
             return
         formatted_rows = [
@@ -1883,6 +1891,7 @@ class DatabaseBrowserApp(App):
                     ("v", "Block Select"),
                     ("V", "Row Select"),
                     (":pagesize N", "Rows/Page"),
+                    ("R", "View Row"),
                     ("enter", "View Cell"),
                     ("y", "Yank"),
                 ]
@@ -1900,6 +1909,7 @@ class DatabaseBrowserApp(App):
                     ("v", "Block Select"),
                     ("V", "Row Select"),
                     (":pagesize N", "Rows/Page"),
+                    ("R", "View Row"),
                     ("enter", "View Cell"),
                     ("y", "Yank"),
                 ]
@@ -2030,6 +2040,18 @@ class DatabaseBrowserApp(App):
             return
         resource_list.index = min(item_count, line_number) - 1
 
+    def _format_row_detail_text(
+        self,
+        columns: list[str],
+        row: tuple[object, ...],
+    ) -> str:
+        column_sections: list[str] = []
+        for column_name, value in zip(columns, row, strict=False):
+            column_sections.append(
+                f"{column_name}:\n{self._format_cell_value_full(value)}"
+            )
+        return "\n\n".join(column_sections)
+
     def _format_cell_value(self, value: object) -> str:
         if isinstance(value, (dict, list)):
             return json.dumps(value, ensure_ascii=True)
@@ -2075,6 +2097,31 @@ class DatabaseBrowserApp(App):
         self.push_screen(
             CellDetailScreen(
                 self._format_cell_value_full(cell_value),
+                self._status_text(),
+                view_text,
+            )
+        )
+
+    def _show_row_detail(self) -> None:
+        active_page = self._active_page()
+        if not active_page.rows:
+            self._update_message("No row to view.")
+            return
+        rows_table = self._rows_table_view()
+        row_index = rows_table.cursor_coordinate.row
+        if row_index >= len(active_page.rows):
+            self._update_message("No row to view.")
+            return
+        row = active_page.rows[row_index]
+        if self._current_view == "query":
+            database_text = self._selected_database_name or "<none>"
+            view_text = f"Query Row Detail ({database_text})"
+        else:
+            table_text = self._selected_table_name or "<none>"
+            view_text = f"Row Detail ({table_text})"
+        self.push_screen(
+            RowDetailScreen(
+                self._format_row_detail_text(active_page.columns, row),
                 self._status_text(),
                 view_text,
             )
