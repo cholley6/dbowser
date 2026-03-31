@@ -99,6 +99,8 @@ class ErrorDialog(ModalScreen[None]):
 
 class CellDetailScreen(ModalScreen[None]):
     BINDINGS = [
+        ("j", "scroll_down", "Down"),
+        ("k", "scroll_up", "Up"),
         ("escape", "dismiss", "Close"),
         ("y", "yank", "Yank Cell"),
     ]
@@ -116,19 +118,29 @@ class CellDetailScreen(ModalScreen[None]):
                 yield Static(self._status_text, id="selected-status")
             keybinds = KeyBindingBar()
             keybinds.id = "keybinds-bar"
-            keybinds.update("[bold cyan]y[/] Yank  [bold cyan]esc[/] Back")
+            keybinds.update(
+                "[bold cyan]j/k[/] Scroll  [bold cyan]y[/] Yank  [bold cyan]esc[/] Back"
+            )
             yield keybinds
             with Horizontal(id="view-bar"):
                 yield Static("", id="view-bar-left")
                 yield Static(self._view_text, id="view-bar-text")
                 yield Static("", id="loading-indicator")
-            with VerticalScroll():
-                yield Static(self._format_text_with_line_numbers(), id="cell-detail-text")
+            with VerticalScroll(id="detail-scroll"):
+                yield Static(
+                    self._format_text_with_line_numbers(), id="cell-detail-text"
+                )
 
     def action_yank(self) -> None:
         app = self.app
         if isinstance(app, _AppWithClipboard):
             app.copy_text_to_clipboard(self._cell_text)
+
+    def action_scroll_down(self) -> None:
+        self.query_one("#detail-scroll", VerticalScroll).scroll_down(animate=False)
+
+    def action_scroll_up(self) -> None:
+        self.query_one("#detail-scroll", VerticalScroll).scroll_up(animate=False)
 
     def _format_text_with_line_numbers(self) -> Text:
         lines = self._cell_text.split("\n")
@@ -167,3 +179,59 @@ class CellDetailScreen(ModalScreen[None]):
             .replace("( ", "(")
             .replace(" )", ")")
         )
+
+
+class RowDetailScreen(ModalScreen[None]):
+    BINDINGS = [
+        ("j", "scroll_down", "Down"),
+        ("k", "scroll_up", "Up"),
+        ("escape", "dismiss", "Close"),
+        ("y", "yank", "Yank Row"),
+    ]
+
+    def __init__(self, row_text: str, status_text: str, view_text: str) -> None:
+        super().__init__()
+        self._row_text = row_text
+        self._status_text = status_text
+        self._view_text = view_text
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical():
+            with Horizontal(id="top-bar"):
+                yield Static(self._status_text, id="selected-status")
+            keybinds = KeyBindingBar()
+            keybinds.id = "keybinds-bar"
+            keybinds.update(
+                "[bold cyan]j/k[/] Scroll  [bold cyan]y[/] Yank  [bold cyan]esc[/] Back"
+            )
+            yield keybinds
+            with Horizontal(id="view-bar"):
+                yield Static("", id="view-bar-left")
+                yield Static(self._view_text, id="view-bar-text")
+                yield Static("", id="loading-indicator")
+            with VerticalScroll(id="detail-scroll"):
+                yield Static(self._format_row_text(), id="row-detail-text")
+
+    def action_yank(self) -> None:
+        app = self.app
+        if isinstance(app, _AppWithClipboard):
+            app.copy_text_to_clipboard(self._row_text)
+
+    def action_scroll_down(self) -> None:
+        self.query_one("#detail-scroll", VerticalScroll).scroll_down(animate=False)
+
+    def action_scroll_up(self) -> None:
+        self.query_one("#detail-scroll", VerticalScroll).scroll_up(animate=False)
+
+    def _format_row_text(self) -> Text:
+        formatted_text = Text()
+        lines = self._row_text.split("\n")
+        for index, line in enumerate(lines):
+            if line.endswith(":"):
+                formatted_text.append(line, style="bold")
+            else:
+                formatted_text.append(line)
+            if index != len(lines) - 1:
+                formatted_text.append("\n")
+        return formatted_text

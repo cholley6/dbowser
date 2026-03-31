@@ -16,7 +16,9 @@ from dbowser.tui import (
 from conftest import LONG_TEXT_VALUE, wait_for_db
 
 
-async def _wait_for(predicate: Callable[[], bool], timeout_seconds: float = 5.0) -> None:
+async def _wait_for(
+    predicate: Callable[[], bool], timeout_seconds: float = 5.0
+) -> None:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         if predicate():
@@ -36,8 +38,17 @@ def _cell_detail_view(app: DatabaseBrowserApp) -> Static | None:
         return None
 
 
+def _row_detail_view(app: DatabaseBrowserApp) -> Static | None:
+    try:
+        return app.screen.query_one("#row-detail-text", Static)
+    except Exception:
+        return None
+
+
 @pytest.mark.asyncio
-async def test_query_view_runs_query(app_config, db_url: str, database_name: str) -> None:
+async def test_query_view_runs_query(
+    app_config, db_url: str, database_name: str
+) -> None:
     await wait_for_db(db_url)
     app = DatabaseBrowserApp(
         app_config,
@@ -155,7 +166,9 @@ async def test_table_with_odd_name_loads_rows(
         await _wait_for(lambda: len(_resource_list(app).children) > 0)
         resource_list = _resource_list(app)
         table_items = [
-            child for child in resource_list.children if isinstance(child, TableListItem)
+            child
+            for child in resource_list.children
+            if isinstance(child, TableListItem)
         ]
         odd_table_index = next(
             (
@@ -193,7 +206,9 @@ async def test_cell_detail_shows_full_value_and_truncates_in_table(
         await _wait_for(lambda: len(_resource_list(app).children) > 0)
         resource_list = _resource_list(app)
         table_items = [
-            child for child in resource_list.children if isinstance(child, TableListItem)
+            child
+            for child in resource_list.children
+            if isinstance(child, TableListItem)
         ]
         long_text_index = next(
             (
@@ -226,6 +241,77 @@ async def test_cell_detail_shows_full_value_and_truncates_in_table(
         cell_detail = _cell_detail_view(app)
         assert cell_detail is not None
         assert cell_detail.content == LONG_TEXT_VALUE
+
+
+@pytest.mark.asyncio
+async def test_row_detail_opens_with_shift_c_and_escape_returns_to_rows(
+    app_config, db_url: str, database_name: str
+) -> None:
+    await wait_for_db(db_url)
+    app = DatabaseBrowserApp(
+        app_config,
+        initial_connection_name="local",
+        initial_database_name=database_name,
+        initial_schema_name="public",
+    )
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await _wait_for(lambda: app._current_view == "table")
+        await _wait_for(lambda: len(_resource_list(app).children) > 0)
+        resource_list = _resource_list(app)
+        table_items = [
+            child
+            for child in resource_list.children
+            if isinstance(child, TableListItem)
+        ]
+        widgets_index = next(
+            (
+                index
+                for index, item in enumerate(table_items)
+                if item.table_name == "widgets"
+            ),
+            None,
+        )
+        assert widgets_index is not None
+        resource_list.index = widgets_index
+        await pilot.pause()
+        await pilot.press("enter")
+        await _wait_for(lambda: app._current_view == "rows")
+        await _wait_for(lambda: app._rows_table_view().row_count > 0)
+        await pilot.press("o", "i", "d", "enter")
+        await pilot.press("R")
+        await _wait_for(lambda: _row_detail_view(app) is not None)
+        row_detail = _row_detail_view(app)
+        assert row_detail is not None
+        assert row_detail.content == "id:\n1\n\nname:\nalpha\n\nquantity:\n3"
+        await pilot.press("escape")
+        await _wait_for(lambda: _row_detail_view(app) is None)
+        assert app._current_view == "rows"
+
+
+@pytest.mark.asyncio
+async def test_row_detail_opens_from_query_view(
+    app_config, db_url: str, database_name: str
+) -> None:
+    await wait_for_db(db_url)
+    app = DatabaseBrowserApp(
+        app_config,
+        initial_connection_name="local",
+        initial_database_name=database_name,
+        initial_schema_name="public",
+    )
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press(":", "q", "u", "e", "r", "y", "enter")
+        await pilot.pause()
+        await pilot.press("r")
+        await _wait_for(lambda: app._current_view == "query")
+        await _wait_for(lambda: app._rows_table_view().row_count > 0)
+        await pilot.press("R")
+        await _wait_for(lambda: _row_detail_view(app) is not None)
+        row_detail = _row_detail_view(app)
+        assert row_detail is not None
+        assert row_detail.content == "one:\n1"
 
 
 @pytest.mark.asyncio
