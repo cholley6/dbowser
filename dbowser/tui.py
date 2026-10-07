@@ -269,6 +269,7 @@ class DatabaseBrowserApp(App):
         ("V", "toggle_row_selection", "Row Select"),
         ("R", "view_row_as_columns", "View Row"),
         ("/", "enter_filter_mode", "Filter"),
+        ("c", "clear_filter", "Clear Filter"),
         (":", "enter_command_mode", "Command"),
         ("escape", "escape", "Back"),
         ("enter", "select_resource", "Select"),
@@ -409,6 +410,11 @@ class DatabaseBrowserApp(App):
             self._update_message("Filters are not available in data views.")
             return
         self._enter_input_mode("filter")
+
+    async def action_clear_filter(self) -> None:
+        if self._input_mode:
+            return
+        await self._clear_active_filter()
 
     def action_enter_command_mode(self) -> None:
         self._enter_input_mode("command")
@@ -1916,23 +1922,24 @@ class DatabaseBrowserApp(App):
                 + [("^p", "Palette"), (":q", "Quit")]
             )
 
+        filter_bindings = [("/", "Filter")]
+        if self._resource_filters.get(self._current_view, ""):
+            filter_bindings.append(("c", "Clear Filter"))
+
         if self._current_view == "connection":
             return (
                 base
                 + movement
-                + [
-                    ("a", "Add"),
-                    ("/", "Filter"),
-                    ("enter", "Select"),
-                    ("^p", "Palette"),
-                    (":q", "Quit"),
-                ]
+                + [("a", "Add")]
+                + filter_bindings
+                + [("enter", "Select"), ("^p", "Palette"), (":q", "Quit")]
             )
 
         return (
             base
             + movement
-            + [("/", "Filter"), ("enter", "Select"), ("^p", "Palette"), (":q", "Quit")]
+            + filter_bindings
+            + [("enter", "Select"), ("^p", "Palette"), (":q", "Quit")]
         )
 
     def _line_number_width(self, line_count: int) -> int:
