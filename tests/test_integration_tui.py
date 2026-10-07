@@ -149,6 +149,41 @@ async def test_table_view_after_initial_schema(
         assert any(item.table_name == "widgets" for item in items)
 
 
+def _table_names(app: DatabaseBrowserApp) -> list[str]:
+    return [
+        child.table_name
+        for child in _resource_list(app).children
+        if isinstance(child, TableListItem)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_clear_filter_after_returning_from_rows(
+    app_config, db_url: str, database_name: str
+) -> None:
+    await wait_for_db(db_url)
+    app = DatabaseBrowserApp(
+        app_config,
+        initial_connection_name="local",
+        initial_database_name=database_name,
+        initial_schema_name="public",
+    )
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await _wait_for(lambda: app._current_view == "table")
+        await _wait_for(lambda: len(_resource_list(app).children) > 0)
+        await pilot.press("/", "g", "a", "d", "g", "e", "t", "enter")
+        await _wait_for(lambda: _table_names(app) == ["gadgets"])
+        await pilot.press("enter")
+        await _wait_for(lambda: app._current_view == "rows")
+        await pilot.press("escape")
+        await _wait_for(lambda: app._current_view == "table")
+        await _wait_for(lambda: _table_names(app) == ["gadgets"])
+        await pilot.press("c")
+        await _wait_for(lambda: "widgets" in _table_names(app))
+        assert app._resource_filters["table"] == ""
+
+
 @pytest.mark.asyncio
 async def test_table_with_odd_name_loads_rows(
     app_config, db_url: str, database_name: str
